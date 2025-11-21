@@ -277,7 +277,7 @@
         
         .form-row {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 20px;
         }
         
@@ -688,6 +688,21 @@
                     <h3 class="section-title">Datos Generales y Legales</h3>
                     <div class="form-row">
                         <div class="form-group">
+                            <label for="numero-ov">Número OV</label>
+                            <input type="text" id="numero-ov" readonly placeholder="Se asignará automáticamente">
+                        </div>
+                        <div class="form-group">
+                            <label for="fecha-cotizacion">Fecha de Cotización</label>
+                            <input type="date" id="fecha-cotizacion">
+                        </div>
+                        <div class="form-group">
+                            <label for="fecha-entrega">Fecha de Entrega</label>
+                            <input type="date" id="fecha-entrega">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
                             <label for="oc-id">OC ID (Cliente)</label>
                             <input type="text" id="oc-id" placeholder="Ej: OC-78901">
                         </div>
@@ -695,16 +710,9 @@
                             <label for="contrato-id">Número de Contrato</label>
                             <input type="text" id="contrato-id" placeholder="Ej: 7.015 DE 2019">
                         </div>
-                    </div>
-                    
-                    <div class="form-row">
                         <div class="form-group">
                             <label for="entidad-compradora">Entidad Compradora</label>
                             <input type="text" id="entidad-compradora" placeholder="Ej: Institución Educativa Campo Hermoso">
-                        </div>
-                        <div class="form-group">
-                            <label for="fecha-cotizacion">Fecha de Contrato</label>
-                            <input type="date" id="fecha-cotizacion">
                         </div>
                     </div>
                     
@@ -717,16 +725,15 @@
                             <label for="direccion-entrega">Dirección de Entrega</label>
                             <input type="text" id="direccion-entrega" placeholder="Ej: Bucaramanga">
                         </div>
+                        <div class="form-group">
+                            <label for="plazo-maximo">Plazo Máximo (Días Calendario)</label>
+                            <input type="number" id="plazo-maximo" placeholder="Ej: 120">
+                        </div>
                     </div>
                     
                     <div class="form-group">
                         <label for="supervisor">Supervisor/Enlace Designado</label>
                         <input type="text" id="supervisor" placeholder="Ej: María González - Tel: 3001234567">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="plazo-maximo">Plazo Máximo (Días Calendario)</label>
-                        <input type="number" id="plazo-maximo" placeholder="Ej: 120">
                     </div>
                 </div>
                 
@@ -1453,6 +1460,7 @@
             
             // Función para resetear formulario de orden
             function resetOrderForm() {
+                document.getElementById('numero-ov').value = '';
                 document.getElementById('oc-id').value = '';
                 document.getElementById('contrato-id').value = '';
                 document.getElementById('entidad-compradora').value = '';
@@ -1461,6 +1469,7 @@
                 document.getElementById('direccion-entrega').value = '';
                 document.getElementById('supervisor').value = '';
                 document.getElementById('plazo-maximo').value = '';
+                document.getElementById('fecha-entrega').value = '';
                 document.getElementById('muestras-aprobadas').checked = false;
                 
                 // Limpiar tabla de ítems
@@ -1483,6 +1492,27 @@
                 currentOrderId = null;
             }
             
+            // Función para obtener el siguiente número de OV
+            function getNextOrderNumber() {
+                return new Promise((resolve, reject) => {
+                    database.ref('orderCounter').once('value')
+                        .then(snapshot => {
+                            let counter = snapshot.val() || 0;
+                            counter++;
+                            database.ref('orderCounter').set(counter)
+                                .then(() => {
+                                    resolve(counter);
+                                })
+                                .catch(error => {
+                                    reject(error);
+                                });
+                        })
+                        .catch(error => {
+                            reject(error);
+                        });
+                });
+            }
+            
             // Función para guardar orden en Firebase
             function saveOrderToFirebase() {
                 // Recopilar datos del formulario
@@ -1495,6 +1525,7 @@
                     direccionEntrega: document.getElementById('direccion-entrega').value,
                     supervisor: document.getElementById('supervisor').value,
                     plazoMaximo: document.getElementById('plazo-maximo').value,
+                    fechaEntrega: document.getElementById('fecha-entrega').value,
                     muestrasAprobadas: document.getElementById('muestras-aprobadas').checked,
                     subtotal: document.getElementById('subtotal').value,
                     total: document.getElementById('total').value,
@@ -1535,18 +1566,31 @@
                         });
                 } else {
                     // Crear nueva orden
-                    const newOrderRef = database.ref('orders').push();
-                    currentOrderId = newOrderRef.key;
-                    
-                    newOrderRef.set(orderData)
-                        .then(() => {
-                            alert('Orden guardada correctamente con ID: ' + currentOrderId);
-                            showPage('dashboard');
-                            loadOrdersFromFirebase();
+                    getNextOrderNumber()
+                        .then(orderNumber => {
+                            const newOrderRef = database.ref('orders').push();
+                            currentOrderId = newOrderRef.key;
+                            
+                            // Asignar número OV
+                            orderData.numeroOV = `OV-MV-${orderNumber}`;
+                            
+                            newOrderRef.set(orderData)
+                                .then(() => {
+                                    // Actualizar campo en el formulario
+                                    document.getElementById('numero-ov').value = orderData.numeroOV;
+                                    
+                                    alert('Orden guardada correctamente con ID: ' + currentOrderId);
+                                    showPage('dashboard');
+                                    loadOrdersFromFirebase();
+                                })
+                                .catch(error => {
+                                    console.error('Error al guardar orden: ', error);
+                                    alert('Error al guardar la orden: ' + error.message);
+                                });
                         })
                         .catch(error => {
-                            console.error('Error al guardar orden: ', error);
-                            alert('Error al guardar la orden: ' + error.message);
+                            console.error('Error al obtener número de orden: ', error);
+                            alert('Error al obtener número de orden: ' + error.message);
                         });
                 }
             }
@@ -1590,7 +1634,7 @@
                                 if (order.estado === 'pendiente') paymentCount++;
                                 
                                 row.innerHTML = `
-                                    <td>OV-${key.substring(0, 8)}</td>
+                                    <td>${order.numeroOV || 'OV-MV-1'}</td>
                                     <td>${order.entidadCompradora}</td>
                                     <td>${order.ocId}</td>
                                     <td>${order.total}</td>
@@ -1642,6 +1686,7 @@
                             currentOrderId = orderId;
                             
                             // Llenar formulario con datos de la orden
+                            document.getElementById('numero-ov').value = order.numeroOV || '';
                             document.getElementById('oc-id').value = order.ocId || '';
                             document.getElementById('contrato-id').value = order.contratoId || '';
                             document.getElementById('entidad-compradora').value = order.entidadCompradora || '';
@@ -1650,6 +1695,7 @@
                             document.getElementById('direccion-entrega').value = order.direccionEntrega || '';
                             document.getElementById('supervisor').value = order.supervisor || '';
                             document.getElementById('plazo-maximo').value = order.plazoMaximo || '';
+                            document.getElementById('fecha-entrega').value = order.fechaEntrega || '';
                             document.getElementById('muestras-aprobadas').checked = order.muestrasAprobadas || false;
                             
                             // Llenar tabla de ítems
@@ -2088,15 +2134,39 @@
                     });
             }
             
+            // Función para agregar números de página al PDF
+            function addPageNumbers(doc, order, docType) {
+                const pageCount = doc.internal.getNumberOfPages();
+                const numeroOV = order.numeroOV || 'OV-MV-1';
+                
+                for (let i = 1; i <= pageCount; i++) {
+                    doc.setPage(i);
+                    
+                    // Agregar número de página según el tipo de documento
+                    let pageText = '';
+                    if (docType === 'OV') {
+                        pageText = `Página-${i}-${numeroOV}`;
+                    } else if (docType === 'AE') {
+                        pageText = `Página-${i}-AE-${numeroOV.split('-')[2]}`;
+                    } else if (docType === 'FV') {
+                        pageText = `Página-${i}-FV-${numeroOV.split('-')[2]}`;
+                    }
+                    
+                    doc.setFontSize(10);
+                    doc.text(pageText, doc.internal.pageSize.width - 40, doc.internal.pageSize.height - 10);
+                }
+            }
+            
             // Función para generar PDF de orden (ACTUALIZADA con alineación de números a la derecha)
             function generateOrderPDF(order) {
                 const doc = new jsPDF();
+                const numeroOV = order.numeroOV || 'OV-MV-1';
                 
                 // Configurar márgenes estándar
                 const marginLeft = PDF_MARGINS.left;
                 const marginRight = PDF_MARGINS.right;
                 const marginTop = PDF_MARGINS.top;
-                
+                const pageHeight = doc.internal.pageSize.height; // [AÑADIR] Altura de página
                 const pageWidth = doc.internal.pageSize.width;
                 
                 // Título
@@ -2104,27 +2174,33 @@
                 doc.setFont(undefined, 'bold');
                 doc.text('ORDEN DE VENTA', pageWidth / 2, marginTop, { align: 'center' });
                 
+                // Número OV
+                doc.setFontSize(12);
+                doc.text(`Número OV: ${numeroOV}`, pageWidth / 2, marginTop + 10, { align: 'center' });
+                
                 // Información de la empresa
                 doc.setFontSize(12);
                 doc.setFont(undefined, 'bold');
-                doc.text(companyConfig.nombreEmpresa || 'Mundoverso.com', marginLeft, marginTop + 15);
+                doc.text(companyConfig.nombreEmpresa || 'Mundoverso.com', marginLeft, marginTop + 25);
                 doc.setFont(undefined, 'normal');
-                doc.text(`NIT: ${companyConfig.nit || '900062917'}`, marginLeft, marginTop + 22);
-                doc.text(`Régimen: ${companyConfig.regimenFiscal || 'No responsable de IVA'}`, marginLeft, marginTop + 29);
-                doc.text(`Representante Legal: ${companyConfig.representanteLegal || 'Juan Pérez'}`, marginLeft, marginTop + 36);
+                doc.text(`NIT: ${companyConfig.nit || '900062917'}`, marginLeft, marginTop + 32);
+                doc.text(`Régimen: ${companyConfig.regimenFiscal || 'No responsable de IVA'}`, marginLeft, marginTop + 39);
+                doc.text(`Representante Legal: ${companyConfig.representanteLegal || 'Juan Pérez'}`, marginLeft, marginTop + 46);
                 
                 // Información de la orden
-                const orderInfoY = marginTop + 50;
+                const orderInfoY = marginTop + 60;
                 doc.text(`Orden de Compra: ${order.ocId || ''}`, marginLeft, orderInfoY);
                 doc.text(`Contrato: ${order.contratoId || ''}`, marginLeft, orderInfoY + 7);
                 doc.text(`Entidad Compradora: ${order.entidadCompradora || ''}`, marginLeft, orderInfoY + 14);
                 doc.text(`Dirección de Entrega: ${order.direccionEntrega || ''}`, marginLeft, orderInfoY + 21);
                 doc.text(`Supervisor: ${order.supervisor || ''}`, marginLeft, orderInfoY + 28);
                 doc.text(`Plazo de Entrega: ${order.plazoMaximo || ''} días`, marginLeft, orderInfoY + 35);
-                doc.text(`Fecha de Generación: ${new Date().toLocaleDateString()}`, marginLeft, orderInfoY + 42);
+                doc.text(`Fecha de Cotización: ${order.fechaCotizacion || ''}`, marginLeft, orderInfoY + 42);
+                doc.text(`Fecha de Entrega: ${order.fechaEntrega || ''}`, marginLeft, orderInfoY + 49);
+                doc.text(`Fecha de Generación: ${new Date().toLocaleDateString()}`, marginLeft, orderInfoY + 56);
                 
                 // Tabla de ítems
-                const tableTop = orderInfoY + 55;
+                const tableTop = orderInfoY + 65;
                 const tableData = [];
                 
                 // Encabezados de la tabla
@@ -2167,8 +2243,17 @@
                 });
                 
                 // Pie de página
-                const finalY = doc.lastAutoTable.finalY + 20;
-                
+                let finalY = doc.lastAutoTable.finalY + 20;
+                // [AÑADIR BLOQUE DE VERIFICACIÓN AQUÍ]
+				// Lógica para verificar si hay espacio para las firmas (+/- 30 unidades)
+				const requiredSpaceForSignatures = 30;
+				const bottomSafetyLimit = pageHeight - PDF_MARGINS.bottom;
+
+				if (finalY + requiredSpaceForSignatures > bottomSafetyLimit) {
+					doc.addPage();
+					finalY = marginTop + 20; // Reiniciar Y en la nueva página
+				}
+				// [FIN DEL BLOQUE AÑADIDO]
                 // Firma
                 doc.text('_________________________', marginLeft + 30, finalY);
                 doc.text('Firma del Supervisor', marginLeft + 30, finalY + 7);
@@ -2176,8 +2261,11 @@
                 doc.text('_________________________', pageWidth - marginRight - 60, finalY);
                 doc.text('Firma del Proveedor', pageWidth - marginRight - 60, finalY + 7);
                 
+                // Agregar números de página
+                addPageNumbers(doc, order, 'OV');
+                
                 // Guardar PDF
-                doc.save(`orden-venta-${order.ocId || currentOrderId}.pdf`);
+                doc.save(`orden-venta-${numeroOV}.pdf`);
             }
             
             // Función para generar PDF de acta de entrega (MEJORADA - FIRMAS EN NUEVA PÁGINA SI ES NECESARIO)
@@ -2197,6 +2285,7 @@
                     
                     if (order) {
                         const doc = new jsPDF();
+                        const numeroOV = order.numeroOV || 'OV-MV-1';
                         
                         // Configurar márgenes estándar
                         const marginLeft = PDF_MARGINS.left;
@@ -2211,27 +2300,33 @@
                         doc.setFont(undefined, 'bold');
                         doc.text('ACTA DE ENTREGA', pageWidth / 2, marginTop, { align: 'center' });
                         
+                        // Número de Acta
+                        doc.setFontSize(12);
+                        doc.text(`Acta de Entrega para: ${numeroOV}`, pageWidth / 2, marginTop + 10, { align: 'center' });
+                        
                         // Información de la empresa
                         doc.setFontSize(12);
                         doc.setFont(undefined, 'bold');
-                        doc.text(companyConfig.nombreEmpresa || 'Mundoverso.com', marginLeft, marginTop + 15);
+                        doc.text(companyConfig.nombreEmpresa || 'Mundoverso.com', marginLeft, marginTop + 25);
                         doc.setFont(undefined, 'normal');
-                        doc.text(`NIT: ${companyConfig.nit || '900062917'}`, marginLeft, marginTop + 22);
-                        doc.text(`Régimen: ${companyConfig.regimenFiscal || 'No responsable de IVA'}`, marginLeft, marginTop + 29);
-                        doc.text(`Representante Legal: ${companyConfig.representanteLegal || 'Juan Pérez'}`, marginLeft, marginTop + 36);
+                        doc.text(`NIT: ${companyConfig.nit || '900062917'}`, marginLeft, marginTop + 32);
+                        doc.text(`Régimen: ${companyConfig.regimenFiscal || 'No responsable de IVA'}`, marginLeft, marginTop + 39);
+                        doc.text(`Representante Legal: ${companyConfig.representanteLegal || 'Juan Pérez'}`, marginLeft, marginTop + 46);
                         
                         // Información de la orden
-                        const orderInfoY = marginTop + 50;
+                        const orderInfoY = marginTop + 60;
                         doc.text(`Orden de Compra: ${order.ocId || ''}`, marginLeft, orderInfoY);
                         doc.text(`Contrato: ${order.contratoId || ''}`, marginLeft, orderInfoY + 7);
                         doc.text(`Entidad Compradora: ${order.entidadCompradora || ''}`, marginLeft, orderInfoY + 14);
                         doc.text(`Dirección de Entrega: ${order.direccionEntrega || ''}`, marginLeft, orderInfoY + 21);
                         doc.text(`Supervisor: ${order.supervisor || ''}`, marginLeft, orderInfoY + 28);
                         doc.text(`Plazo de Entrega: ${order.plazoMaximo || ''} días`, marginLeft, orderInfoY + 35);
-                        doc.text(`Fecha de Generación: ${new Date().toLocaleDateString()}`, marginLeft, orderInfoY + 42);
+                        doc.text(`Fecha de Cotización: ${order.fechaCotizacion || ''}`, marginLeft, orderInfoY + 42);
+                        doc.text(`Fecha de Entrega: ${order.fechaEntrega || ''}`, marginLeft, orderInfoY + 49);
+                        doc.text(`Fecha de Generación: ${new Date().toLocaleDateString()}`, marginLeft, orderInfoY + 56);
                         
                         // Tabla de serialización
-                        const tableTop = orderInfoY + 55;
+                        const tableTop = orderInfoY + 65;
                         const tableData = [];
                         
                         // Encabezados de la tabla
@@ -2304,8 +2399,11 @@
                         doc.text('_________________________', pageWidth - marginRight - 60, signatureY);
                         doc.text('Firma del Proveedor', pageWidth - marginRight - 60, signatureY + 7);
                         
+                        // Agregar números de página
+                        addPageNumbers(doc, order, 'AE');
+                        
                         // Guardar PDF
-                        doc.save(`acta-entrega-${order.ocId || currentOrderId}.pdf`);
+                        doc.save(`acta-entrega-${numeroOV}.pdf`);
                     } else {
                         alert('Orden no encontrada');
                     }
@@ -2328,6 +2426,7 @@
                         const order = snapshot.val();
                         if (order) {
                             const doc = new jsPDF();
+                            const numeroOV = order.numeroOV || 'OV-MV-1';
                             
                             // Configurar márgenes estándar
                             const marginLeft = PDF_MARGINS.left;
@@ -2341,27 +2440,33 @@
                             doc.setFont(undefined, 'bold');
                             doc.text('FACTURA ELECTRÓNICA', pageWidth / 2, marginTop, { align: 'center' });
                             
+                            // Número de Factura
+                            doc.setFontSize(12);
+                            doc.text(`Factura para: ${numeroOV}`, pageWidth / 2, marginTop + 10, { align: 'center' });
+                            
                             // Información de la empresa
                             doc.setFontSize(12);
                             doc.setFont(undefined, 'bold');
-                            doc.text(companyConfig.nombreEmpresa || 'Mundoverso.com', marginLeft, marginTop + 15);
+                            doc.text(companyConfig.nombreEmpresa || 'Mundoverso.com', marginLeft, marginTop + 25);
                             doc.setFont(undefined, 'normal');
-                            doc.text(`NIT: ${companyConfig.nit || '900062917'}`, marginLeft, marginTop + 22);
-                            doc.text(`Régimen: ${companyConfig.regimenFiscal || 'No responsable de IVA'}`, marginLeft, marginTop + 29);
-                            doc.text(`Representante Legal: ${companyConfig.representanteLegal || 'Juan Pérez'}`, marginLeft, marginTop + 36);
+                            doc.text(`NIT: ${companyConfig.nit || '900062917'}`, marginLeft, marginTop + 32);
+                            doc.text(`Régimen: ${companyConfig.regimenFiscal || 'No responsable de IVA'}`, marginLeft, marginTop + 39);
+                            doc.text(`Representante Legal: ${companyConfig.representanteLegal || 'Juan Pérez'}`, marginLeft, marginTop + 46);
                             
                             // Información de la orden
-                            const orderInfoY = marginTop + 50;
+                            const orderInfoY = marginTop + 60;
                             doc.text(`Orden de Compra: ${order.ocId || ''}`, marginLeft, orderInfoY);
                             doc.text(`Contrato: ${order.contratoId || ''}`, marginLeft, orderInfoY + 7);
                             doc.text(`Entidad Compradora: ${order.entidadCompradora || ''}`, marginLeft, orderInfoY + 14);
                             doc.text(`Dirección de Entrega: ${order.direccionEntrega || ''}`, marginLeft, orderInfoY + 21);
                             doc.text(`Supervisor: ${order.supervisor || ''}`, marginLeft, orderInfoY + 28);
                             doc.text(`Plazo de Entrega: ${order.plazoMaximo || ''} días`, marginLeft, orderInfoY + 35);
-                            doc.text(`Fecha de Generación: ${new Date().toLocaleDateString()}`, marginLeft, orderInfoY + 42);
+                            doc.text(`Fecha de Cotización: ${order.fechaCotizacion || ''}`, marginLeft, orderInfoY + 42);
+                            doc.text(`Fecha de Entrega: ${order.fechaEntrega || ''}`, marginLeft, orderInfoY + 49);
+                            doc.text(`Fecha de Generación: ${new Date().toLocaleDateString()}`, marginLeft, orderInfoY + 56);
                             
                             // Tabla de ítems
-                            const tableTop = orderInfoY + 55;
+                            const tableTop = orderInfoY + 65;
                             const tableData = [];
                             
                             // Encabezados de la tabla
@@ -2413,8 +2518,11 @@
                             doc.text('_________________________', pageWidth - marginRight - 60, finalY);
                             doc.text('Firma del Proveedor', pageWidth - marginRight - 60, finalY + 7);
                             
+                            // Agregar números de página
+                            addPageNumbers(doc, order, 'FV');
+                            
                             // Guardar PDF
-                            doc.save(`factura-${order.ocId || currentOrderId}.pdf`);
+                            doc.save(`factura-${numeroOV}.pdf`);
                         } else {
                             alert('Orden no encontrada');
                         }
